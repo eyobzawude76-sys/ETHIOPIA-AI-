@@ -1,15 +1,17 @@
-"""ETHIOPIA AI backend API.
-
-The chat endpoint intentionally reports that no model is configured yet.
-A model runtime will be selected after checking the target Android device.
-"""
+"""ETHIOPIA AI backend API."""
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from app.model_client import (
+    ModelNotConfiguredError,
+    ModelUpstreamError,
+    generate_reply,
+)
+
 app = FastAPI(
     title="ETHIOPIA AI API",
-    description="Early API foundation for Afaan Oromoo and Afaan Amharic AI assistance.",
-    version="0.1.0",
+    description="AI assistant API for Afaan Oromoo and Afaan Amharic.",
+    version="0.2.0",
 )
 
 
@@ -30,14 +32,20 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    """Placeholder until an open-source model runtime is integrated."""
+async def chat(request: ChatRequest) -> ChatResponse:
+    """Send a user message to the configured OpenAI-compatible model server."""
     if not request.message.strip():
         raise HTTPException(status_code=422, detail="Message cannot be blank.")
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "AI model is not connected yet. The model will be selected "
-            "after checking the Android device's RAM and storage."
-        ),
-    )
+    try:
+        answer = await generate_reply(request.message.strip(), request.language)
+        return ChatResponse(status="ok", message=answer)
+    except ModelNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="AI model is not configured. Set MODEL_BASE_URL on the backend.",
+        ) from exc
+    except ModelUpstreamError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The AI model server could not complete the request.",
+        ) from exc
